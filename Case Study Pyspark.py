@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[274]:
+# In[185]:
 
 
 # !pip install findspark
 
 
-# In[275]:
+# In[186]:
 
 
 # import findspark
@@ -15,7 +15,7 @@
 # findspark.find()
 
 
-# In[276]:
+# In[187]:
 
 
 import pyspark
@@ -23,24 +23,29 @@ from pyspark.sql import SparkSession
 spark = SparkSession.builder.getOrCreate()
 
 
-# In[277]:
+# In[188]:
 
 
 # spark = SparkSession.builder.config("spark.driver.host","localhost").appName('case_study_pyspark').getOrCreate()
 
 
-# In[278]:
+# In[189]:
 
 
 #1. the flights data:
 
 # flights=spark.read.format("flights.csv") .option("header", "true").option("inferschema", "true") 
-flights = spark.read.csv("flights.csv",header=True,inferSchema=True)
-flights.show()
+# flights = spark.read.csv("flights.csv",header=True,inferSchema=True)
+flights = spark.read.option("header", "true").csv("flights.csv",inferSchema=True)
+
+flights.show(5)
 flights.printSchema()
 
+# test=flights.select('date','flight')
+# test.show()
 
-# In[279]:
+
+# In[190]:
 
 
 # i) to check variables with sum of null values
@@ -49,7 +54,7 @@ from pyspark.sql.functions import *
 flights.select([count(when(col(c).isNull(), c)).alias(c) for c in flights.columns]).show()
 
 
-# In[280]:
+# In[191]:
 
 
 # delete obs where 'dep_time' 'arr_time' 'tailnum' have null values
@@ -57,23 +62,23 @@ flights.select([count(when(col(c).isNull(), c)).alias(c) for c in flights.column
 flights = flights.na.drop(subset=['dep_time', 'arr_time','tailnum'])
 
 
-# In[281]:
+# In[192]:
 
 
 flights.select([count(when(col(c).isNull(), c)).alias(c) for c in flights.columns]).show()
 
 
-# In[282]:
+# In[193]:
 
 
 # replacing null value with average  value of 'air_time' using spark sql and aggregate functions
+
+#############  calculating mean using spark.sql       ########################3
 
 # flights.createOrReplaceTempView("fly_data")
 # avg_air=spark.sql("select carrier,origin,dest,avg(air_time) from fly_data group by carrier,origin,dest").show(truncate=False)  
 
 flights_avg_air=flights.groupby('carrier', 'origin','dest').agg(mean('air_time').alias('mean_air_time'))
-
-flights_avg_air.show()
 
 flights = flights.join(flights_avg_air, on = ['origin','dest','carrier'],how = 'left')
 
@@ -83,44 +88,53 @@ flights = flights.withColumn('air_time', coalesce('air_time','mean_air_time'))
 
 flights= flights.drop(col('mean_air_time'))
 
+#############  replacing mean using imputer    ########################3
 
-# In[283]:
+# from pyspark.ml.feature import Imputer
+# grouped_data = flights.groupBy(['carrier', 'origin','dest'])
+# imputer=Imputer(inputCols=['air_time'], outputCols=['imputed_air_time']).setStrategy("mean")
+# imputer.fit(grouped_data).transform(grouped_data).show()
+
+
+# In[25]:
 
 
 flights.select([count(when(col(c).isNull(), c)).alias(c) for c in flights.columns]).show()
 
 
-# In[284]:
+# In[26]:
 
 
 # ii) weather data:
-# Calculate the missing values present in each variable
 
 weather = spark.read.csv("weather.csv",header=True,inferSchema=True)
-weather.show()
+weather.show(5)
 weather.printSchema()
 
 
-# In[285]:
+# In[36]:
 
 
 # to check variables with sum of null values
 from pyspark.sql.functions import *
 
-weather.select([count(when(col(c).isNull(), c)).alias(c) for c in weather.columns]).show()
+#####checking values at null places #############3
+
+weather.where("origin=='EWR' and humid='64.93'").select('origin','pressure','humid','wind_dir').distinct().collect()
+
+######calculating sum of  null values 
+
+weather.select([count(when(col(c)=='NA', c)).alias(c) for c in weather.columns]).show()
 
 
-# In[286]:
+# In[37]:
 
 
-#calculating average of variables having null values
+### calculating average of variables having null values
 
 
 weather_avg=weather.groupby('origin','date').agg(mean("temp"),mean("dewp"),mean("humid"),mean("wind_dir"),\
                                                  mean("wind_speed"),mean("wind_gust"),mean("pressure"))
-
-
-# weather_avg.show()
 
 weather = weather.join(weather_avg, on = ['origin','date'],how = 'left')
 
@@ -132,28 +146,26 @@ weather = weather.withColumn('temp' , coalesce('temp','avg(temp)'))\
                 .withColumn('wind_gust' , coalesce('wind_gust','avg(wind_gust)'))\
                 .withColumn('pressure' , coalesce('pressure','avg(pressure)'))
 
-# weather.show()
 
-# dropping extra columns 
+######### dropping extra columns 
 
 for i in weather.columns:
     if i[0:3]=='avg':
         weather = weather.drop(col(i))
-        
-# weather.show()
+ 
 
 
-# In[287]:
+# In[38]:
 
 
 # iii) the planes data:
 
 planes = spark.read.csv("planes.csv",header=True,inferSchema=True)
-planes.show()
+planes.show(5)
 planes.printSchema()
 
 
-# In[288]:
+# In[39]:
 
 
 # Calculating the missing values present in each variable
@@ -161,7 +173,7 @@ planes.printSchema()
 planes.select([count(when(col(c).isNull(), c)).alias(c) for c in planes.columns]).show()
 
 
-# In[289]:
+# In[40]:
 
 
 # Removing redundant variables with more than 70% missing values.
@@ -177,26 +189,30 @@ for i in planes.columns:
 planes.select([count(when(col(c).isNull(), c)).alias(c) for c in planes.columns]).show()
 
 
-# In[290]:
+# In[41]:
 
 
 # Removing all the observations with any missing values
 
 planes = planes.dropna(how = 'any')  
-        
+       
+### checking sum of null values
+
 planes.select([count(when(col(c).isNull(), c)).alias(c) for c in planes.columns]).show()
 
 
-# In[291]:
+# In[194]:
 
 
 #2.Extracting information from the existing variables
+
+###  converting date column datatype from string to date  ###############
 
 flights = flights.withColumn('date',to_date(col('date'),"M/d/yyyy"))
 
 flights.printSchema()
 
-#Creating the new variables:
+#### Creating the new variables YEAR, MONTH, DAY:
 
 # test = flights.select(year(flights.date).alias('year'), month(flights.date).alias('month'), \
 #                       dayofmonth(flights.date).alias('day'),hour(flights.date).alias('hour'))
@@ -209,128 +225,327 @@ flights.show(5)
 
 
 
-# In[292]:
+# In[195]:
 
 
-#fomatting time from int, float to datetime and calculating hour 
+### fomatting time from int to datetime to calculate hour 
 
 from  datetime import timedelta
-from pyspark.sql.types import StringType
+from pyspark.sql.types import *
 from pyspark.sql import functions as f
 
 from pyspark.sql.functions import *
+ 
+# test=flights.select('date','sched_arr_time','sched_dep_time','arr_time','dep_time')
 
-# flights = flights.withColumn("sched_dep_time",flights["sched_dep_time"].cast(StringType()))
-# flights= flights.withColumn('sched_dep_time',f.concat(f.format_string("000"),f.col('sched_dep_time')))
+# #######  converting int column to string in order to add string 000 #########
 
-flights = flights.withColumn('sched_dep_time',to_timestamp(col('sched_dep_time')))
-flights = flights.withColumn('hour',hour(col('sched_dep_time')))
+# test = test.withColumn("sched_dep_time",test.sched_dep_time.cast(StringType()))
+# test= test.withColumn('sched_dep_time',f.concat(f.format_string("000"),f.col('sched_dep_time')))
+
+# test= test.withColumn('f_sched_dep_tm',substring(test['sched_dep_time'],-7,5))
+# test= test.withColumn('l_sched_dep_tm',substring(test['sched_dep_time'],-2,2))
+
+# ######### calulating seconds available in x hours ##############
+
+# test= test.withColumn('f_sched_dep_tm',test.f_sched_dep_tm.cast(IntegerType())*3600)\
+#           .withColumn('l_sched_dep_tm',test.l_sched_dep_tm.cast(IntegerType())*60)
+# test= test.withColumn('sched_dep_tm',test.f_sched_dep_tm+test.l_sched_dep_tm)
+
+# ######### converting calculated seconds into timestamp  ############
+
+# test= test.withColumn('sched_dep_tm',to_timestamp(col('sched_dep_tm')))
+# test= test.withColumn('sched_dep_tm',test.sched_dep_tm - expr('INTERVAL 330 MINUTES'))
+
+# ######### converting into string to substring date part from timestamp  ############
+
+# test = test.withColumn("sched_dep_tm",test.sched_dep_tm.cast(StringType()))
+# test= test.withColumn('sched_dep_time',substring(test['sched_dep_tm'],12,9))
 
 
-# In[293]:
+# ######### dropping extra columns ###############
 
+# for i in test.columns:
+#     if i[0:2]=='f_' or i[0:2]=='l_' or i[-2:]=='tm':
+#         test = test.drop(col(i))
+
+######---------------------for sched_dep_time----------------------------------------------------------#################
+
+
+#######  converting int column to string in order to add string 000 #########
+
+flights = flights.withColumn("sched_dep_time",flights.sched_dep_time.cast(StringType()))
+flights= flights.withColumn('sched_dep_time',f.concat(f.format_string("000"),f.col('sched_dep_time')))
+
+flights= flights.withColumn('f_sched_dep_tm',substring(flights['sched_dep_time'],-7,5))
+flights= flights.withColumn('l_sched_dep_tm',substring(flights['sched_dep_time'],-2,2))
+
+######### calulating seconds available in x hours ##############
+
+flights= flights.withColumn('f_sched_dep_tm',flights.f_sched_dep_tm.cast(IntegerType())*3600)\
+          .withColumn('l_sched_dep_tm',flights.l_sched_dep_tm.cast(IntegerType())*60)
+flights= flights.withColumn('sched_dep_tm',flights.f_sched_dep_tm+flights.l_sched_dep_tm)
+
+######### converting calculated seconds into timestamp  ############
+
+flights= flights.withColumn('sched_dep_tm',to_timestamp(col('sched_dep_tm')))
+flights= flights.withColumn('sched_dep_tm',flights.sched_dep_tm - expr('INTERVAL 330 MINUTES'))
+
+######### converting into string to substring date part from timestamp  ############
+
+flights = flights.withColumn("sched_dep_tm",flights.sched_dep_tm.cast(StringType()))
+flights= flights.withColumn('sched_dep_time',substring(flights['sched_dep_tm'],12,9))
+
+######---------------------for dep_time----------------------------------------------------------#################
+
+
+flights = flights.withColumn("dep_time",flights.dep_time.cast(StringType()))
+flights= flights.withColumn('dep_time',f.concat(f.format_string("000"),f.col('dep_time')))
+
+flights= flights.withColumn('f_dep_tm',substring(flights['dep_time'],-7,5))
+flights= flights.withColumn('l_dep_tm',substring(flights['dep_time'],-2,2))
+
+######### calulating seconds available in x hours ##############
+
+flights= flights.withColumn('f_dep_tm',flights.f_dep_tm.cast(IntegerType())*3600)\
+          .withColumn('l_dep_tm',flights.l_dep_tm.cast(IntegerType())*60)
+flights= flights.withColumn('dep_tm',flights.f_dep_tm+flights.l_dep_tm)
+
+######### converting calculated seconds into timestamp  ############
+
+flights= flights.withColumn('dep_tm',to_timestamp(col('dep_tm')))
+flights= flights.withColumn('dep_tm',flights.dep_tm - expr('INTERVAL 331 MINUTES'))
+
+######### converting into string to substring date part from timestamp  ############
+
+flights = flights.withColumn("dep_tm",flights.dep_tm.cast(StringType()))
+flights= flights.withColumn('dep_time',substring(flights['dep_tm'],12,9))
+
+
+# In[201]:
+
+
+######---------------------for sched_arr_time----------------------------------------------------------#################
+
+
+#######  converting int column to string in order to add string 000 #########
+
+flights = flights.withColumn("sched_arr_time",flights.sched_arr_time.cast(StringType()))
+flights= flights.withColumn('sched_arr_time',f.concat(f.format_string("000"),f.col('sched_arr_time')))
+
+flights= flights.withColumn('f_sched_arr_tm',substring(flights['sched_arr_time'],-7,5))
+flights= flights.withColumn('l_sched_arr_tm',substring(flights['sched_arr_time'],-2,2))
+
+######### calulating seconds available in x hours ##############
+
+flights= flights.withColumn('f_sched_arr_tm',flights.f_sched_arr_tm.cast(IntegerType())*3600)\
+          .withColumn('l_sched_arr_tm',flights.l_sched_arr_tm.cast(IntegerType())*60)
+flights= flights.withColumn('sched_arr_tm',flights.f_sched_arr_tm+flights.l_sched_arr_tm)
+
+######### converting calculated seconds into timestamp  ############
+
+flights= flights.withColumn('sched_arr_tm',to_timestamp(col('sched_arr_tm')))
+flights= flights.withColumn('sched_arr_tm',flights.sched_arr_tm - expr('INTERVAL 330 MINUTES'))
+
+######### converting into string to substring date part from timestamp  ############
+
+flights = flights.withColumn("sched_arr_tm",flights.sched_arr_tm.cast(StringType()))
+flights= flights.withColumn('sched_arr_time',substring(flights['sched_arr_tm'],12,9))
+
+
+######---------------------for arr_time----------------------------------------------------------#################
+
+
+flights = flights.withColumn("arr_time",flights.arr_time.cast(StringType()))
+flights= flights.withColumn('arr_time',f.concat(f.format_string("000"),f.col('arr_time')))
+
+flights= flights.withColumn('f_arr_tm',substring(flights['arr_time'],-7,5))
+flights= flights.withColumn('l_arr_tm',substring(flights['arr_time'],-2,2))
+
+######### calulating seconds available in x hours ##############
+
+flights= flights.withColumn('f_arr_tm',flights.f_arr_tm.cast(IntegerType())*3600)\
+          .withColumn('l_arr_tm',flights.l_arr_tm.cast(IntegerType())*60)
+flights= flights.withColumn('arr_tm',flights.f_arr_tm+flights.l_arr_tm)
+
+######### converting calculated seconds into timestamp  ############
+
+flights= flights.withColumn('arr_tm',to_timestamp(col('arr_tm')))
+flights= flights.withColumn('arr_tm',flights.arr_tm - expr('INTERVAL 331 MINUTES'))
+
+######### converting into string to substring date part from timestamp  ############
+
+flights = flights.withColumn("arr_tm",flights.arr_tm.cast(StringType()))
+flights= flights.withColumn('arr_time',substring(flights['arr_tm'],12,9))
+
+
+######### dropping extra columns ###############
+
+for i in flights.columns:
+    if i[0:2]=='f_' or i[0:2]=='l_' or i[-2:]=='tm':
+        flights = flights.drop(col(i))
+
+flights.printSchema()
+flights.show(5)
+
+
+
+# In[214]:
+
+
+###converted date to string to merge in arr,dep columns #############
+
+flights = flights.withColumn("date",flights.date.cast(StringType()))
+
+######## merging date and arr,dep fields  ############
+
+flights = flights.withColumn('sched_dep_time',concat(col('date'),format_string(" "),col('sched_dep_time')))
+flights = flights.withColumn('sched_dep_time',to_timestamp('sched_dep_time'))
+
+flights = flights.withColumn('dep_time',concat(col('date'),format_string(" "),col('dep_time')))
+flights = flights.withColumn('dep_time',to_timestamp('dep_time'))
+
+flights = flights.withColumn('sched_arr_time',concat(col('date'),format_string(" "),col('sched_arr_time')))
+flights = flights.withColumn('sched_arr_time',to_timestamp('sched_arr_time'))
+
+flights = flights.withColumn('arr_time',concat(col('date'),format_string(" "),col('arr_time')))
+flights = flights.withColumn('arr_time',to_timestamp('arr_time'))
+
+flights.printSchema()
+flights.show(5)
+
+
+# In[226]:
+
+
+#### Creating the new variables HOUR,arr_delay, dep_delay in minutes:
+
+flights = flights.withColumn('hour', hour(col('sched_dep_time')))
+
+flights = flights.withColumn('dep_delay',col('dep_time').cast(LongType())-col('sched_dep_time').cast(LongType()))
+flights=flights.withColumn('dep_delay',round(col('dep_delay')/60))
 
 flights = flights.withColumn('arr_delay',col('arr_time').cast(LongType())-col('sched_arr_time').cast(LongType()))
-flights = flights.withColumn('dep_delay',col('dep_time').cast(LongType())-col('sched_dep_time').cast(LongType()))
+flights=flights.withColumn('arr_delay',round(col('arr_delay')/60))
 
 flights.show(5)
 
 
-# In[294]:
+# In[ ]:
 
 
-#3 Busiest Routes
 
-busy_routes=flights.filter(flights.year == 2013).groupby('origin','dest').agg(count('date').alias("route_freq"))
 
-#sort in descending order to find top busiest route 
 
-busy_routes=busy_routes.sort(desc('route_freq'))
+# In[303]:
+
+
+#3 i) Busiest Routes
+routes=flights.select('carrier','flight','origin','dest','date')
+
+busy_routes=routes.filter(flights.year == 2013).groupby('origin','dest').agg(count('flight').alias("route_freq")).sort(desc('route_freq'))
+
+##### Busiest Route ##############
 busy_routes.show(1)
 
 
-# In[295]:
+# In[311]:
 
 
-# number of flights for each of the carriers for the top five busiest routes
+# #3 ii) number of flights for each of the carriers for the top five busiest routes
 
 # busy_routes.printSchema()
-# busy_routes=busy_routes.withColumn("row",row_number().over(route_freq)).filter(col("row") <= 5)
 
-busy_routes=busy_routes.show(5)
-top_five_busy_routes = busy_routes.join(flights, on = ['origin','dest'],how = 'left')
+busy_routes.createOrReplaceTempView("routes")
 
-flights_busy_routes=flights.groupby("origin","dest","carrier").agg(count('flight').alias("count"))
-df1=flights_busy_routes.show(16)
-
-
-# In[296]:
+busy_routes=spark.sql("select * from "+ " (select *, row_number() OVER (ORDER BY route_freq desc) as rn " +" FROM routes) where rn <=5 ")
+busy_routes=busy_routes.drop('rn')
+busy_routes.show()
 
 
-# Compare the numbers calculated in (ii) with total number of flights for each carrier
+top_five_busy_routes = busy_routes.join(routes, on = ['origin','dest'],how = 'left')
 
-df2=flights.groupby("carrier").agg(count('flight').alias("count"))
-df2.show(16)
+df1=top_five_busy_routes.groupby("origin","dest","carrier").agg(count('flight').alias("count")).sort("origin","dest","carrier")
 
-
-# In[297]:
+df1.show()
 
 
-df1.merge(df2,how="inner",on=["carrier"])
+# In[314]:
 
 
-# In[298]:
+# 3 iii) Compare the numbers calculated in (ii) with total number of flights for each carrier
+
+df2=routes.groupby("carrier").agg(count('flight').alias("count2")).sort("carrier")
+
+df2.show()
+
+df1.join(df2,how="inner",on=["carrier"]).sort("origin","dest","carrier").show()
 
 
-# 4. Busiest time of the day (maximum flights taking off)
+# In[ ]:
+
+
+
+
+
+# In[317]:
+
+
+# 4. i) Busiest time of the day (maximum flights taking off)
 
 # carrier wise 
 
-busy_hr_carr = flights.groupby("carrier","dep_time").agg(count('flight').alias("count"))
+busy_hr_carr = flights.groupby("carrier","hour").agg(count('flight').alias("count"))
 
-busy_hr_carr = busy_hr_carr.sort(desc('carrier'),desc('count'))
-
-busy_hr_carr.show()
+busy_hr_carr.groupby(["carrier"]).max().sort("carrier").show()
 
 
-# In[299]:
+
+# In[321]:
 
 
-# Busiest time of the day origin wise
+# 4 ii) Busiest time of the day origin wise
 
-busy_hr_org = flights.groupby("origin","dep_time").agg(count('flight').alias("count"))
+busy_hr_org = flights.groupby("origin","hour").agg(count('flight').alias("count"))
 
-busy_hr_org.groupby(["origin"]).max().show()
-
-
-# In[300]:
+busy_hr_org.groupby(["origin"]).max().sort(desc('max(count)')).show()
 
 
-# 5.  Origins and destinations 
-# 
+# In[338]:
+
+
+# 5. i) Origins and destinations 
 # out of total flights from JFK, percentage of flights got delayed
 
-jfk=flights.filter((flights['dep_delay']>0) & (flights['origin']=='JFK')).count()/flights.filter\
-(flights['origin']=='JFK').count()
+delays_data=flights.select("origin","dest","flight","dep_delay","arr_delay","hour")
+
+jfk=delays_data.where("origin=='JFK'").count()
+jfk_delay=delays_data.where("dep_delay>0 and origin=='JFK'").count()
+
+del_per=(jfk_delay)*100/jfk
+del_per
 
 
-
-# In[301]:
-
-
-#No of flights from each origin airport which got delayed 
-
-delays_flights_dest = flights.groupby('origin').agg(count('flight'))
-
-delays_flights_dest.show(1)
+# In[342]:
 
 
-# In[302]:
+# 5 ii) origin airport had the least number of total delays
+
+delays_flights=delays_data.where("dep_delay>0")
+
+delays_flights_org = delays_flights.groupby('origin').agg(count('flight').alias("count"))
+
+delays_flights_dest.sort('count').show(1)
 
 
-#  destination(s) has the highest delays
+# In[346]:
 
-delays_flights_dest = flights.filter((flights['arr_delay']>0)).groupby('dest').agg(count('date')).sort(desc('count(date)'))
+
+#  5 iii) destination(s) has the highest delays
+
+delays_flights_dest = delays_flights.groupby('dest').agg(count('flight').alias("count"))
+
+delays_flights_dest.sort(desc('count')).show()
 
 
 # In[303]:
