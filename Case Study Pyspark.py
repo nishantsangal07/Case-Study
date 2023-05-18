@@ -102,7 +102,7 @@ flights= flights.drop(col('mean_air_time'))
 flights.select([count(when(col(c).isNull(), c)).alias(c) for c in flights.columns]).show()
 
 
-# In[26]:
+# In[369]:
 
 
 # ii) weather data:
@@ -112,7 +112,7 @@ weather.show(5)
 weather.printSchema()
 
 
-# In[36]:
+# In[370]:
 
 
 # to check variables with sum of null values
@@ -127,7 +127,7 @@ weather.where("origin=='EWR' and humid='64.93'").select('origin','pressure','hum
 weather.select([count(when(col(c)=='NA', c)).alias(c) for c in weather.columns]).show()
 
 
-# In[37]:
+# In[371]:
 
 
 ### calculating average of variables having null values
@@ -151,8 +151,9 @@ weather = weather.withColumn('temp' , coalesce('temp','avg(temp)'))\
 
 for i in weather.columns:
     if i[0:3]=='avg':
-        weather = weather.drop(col(i))
- 
+        weather = weather.drop(col(i)) 
+
+weather.show(1)
 
 
 # In[38]:
@@ -538,14 +539,64 @@ delays_flights_org = delays_flights.groupby('origin').agg(count('flight').alias(
 delays_flights_dest.sort('count').show(1)
 
 
-# In[346]:
+# In[348]:
 
 
 #  5 iii) destination(s) has the highest delays
 
 delays_flights_dest = delays_flights.groupby('dest').agg(count('flight').alias("count"))
 
-delays_flights_dest.sort(desc('count')).show()
+delays_flights_dest.sort(desc('count')).show(1)
+
+
+
+# In[387]:
+
+
+# 6)  Understanding weather conditions related with delays
+
+weather = weather.withColumn('hour', hour(col('hour_sched_dep')))
+weather = weather.withColumn('date',to_date(col('date'),"M-d-yyyy"))
+weather = weather.withColumn("date",weather.date.cast(StringType()))
+
+# i) Join the weather and flights data using the variables: date, hour and origin variables.
+
+weather_flight=flights["month","date","origin","hour","flight","dep_delay","arr_delay"].join(weather["date","origin","hour","temp","wind_dir","wind_speed",
+                                                           "pressure","visib"],how='inner',on=["date","origin","hour"])
+weather_flight=weather_flight.where("arr_delay>0")
+weather_flight.show(5)
+
+
+# In[394]:
+
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+# weather_flight.show(5)
+
+#########  Wind Speed  VS DELAY  ######################
+
+wind_speed_delay = weather_flight.groupby('wind_speed').agg(mean("arr_delay").alias("count"))
+
+x = wind_speed_delay.toPandas()['wind_speed'].values.tolist()
+y = wind_speed_delay.toPandas()['count'].values.tolist()
+plt.scatter(x,y)
+plt.title("Wind Speed vs Delays")
+plt.xlabel("Wind Speed ")
+plt.ylabel("Delays")
+
+plt.show()
+
+
+# In[402]:
+
+
+# 6. ii) Calculate averages for the weather condition parameters provided and the departure delay, grouped by months.
+
+avg_weather=weather_flight.groupby("month").agg(mean("dep_delay"),mean("temp"),mean("wind_dir"),mean("wind_speed"),
+                                                mean("pressure"),mean("visib"))
+
+avg_weather.sort("month").show()
 
 
 # In[303]:
@@ -571,7 +622,7 @@ plt.show()
 #  No, older planes do not use more fuel
 
 
-# In[304]:
+# In[403]:
 
 
 # understand check the relationships between fuel consumption with other plane variables 
@@ -588,6 +639,13 @@ plt.title("type vs fuel_cc")
 plt.xlabel("type")
 plt.ylabel("fuel_cc")
 
+
+
+
+
+# In[404]:
+
+
 planes_engines=planes.groupby(["engines"]).agg(mean("fuel_cc"))
 
 a = planes_engines.toPandas()['engines'].values.tolist()
@@ -597,6 +655,10 @@ plt.title("engines vs fuel_cc")
 plt.xlabel("engines")
 plt.ylabel("fuel_cc")
 
+
+# In[405]:
+
+
 planes_seats=planes.groupby(["seats"]).agg(mean("fuel_cc"))
 
 a = planes_seats.toPandas()['seats'].values.tolist()
@@ -605,6 +667,9 @@ plt.scatter(a,b)
 plt.title("seats vs fuel_cc")
 plt.xlabel("seats")
 plt.ylabel("fuel_cc")
+
+
+# In[406]:
 
 
 planes_engine=planes.groupby(["engine"]).agg(mean("fuel_cc"))
@@ -617,17 +682,27 @@ plt.xlabel("engine")
 plt.ylabel("fuel_cc")
 
 
-# In[305]:
+# In[414]:
 
 
 #8 Variation of delays over the course of the day
 
-# delay=delays_data.loc[(delays_data.dep_delay>0) &(delays_data.arr_delay>0)]
+delay=delays_data.where("dep_delay>0 and arr_delay>0")
 
-# variation=delay.groupby(["hour"])["dep_delay"].mean().reset_index(name="Avg_Delay")
-# variation.sort_values(by="hour")
+variation=delay.groupby("hour").agg(mean("dep_delay").alias("Avg_Delay")).sort("hour")
 
-# variation.plot(x="hour", y="Avg_Delay", kind="bar")
+a = variation.toPandas()['hour'].values.tolist()
+b = variation.toPandas()['Avg_Delay'].values.tolist()
+plt.scatter(a,b)
+plt.title("hour vs Avg_Delay")
+plt.xlabel("hour")
+plt.ylabel("Avg_Delay")
+
+# delay rises along with the hour and reach max around 17:00 pm and then again there is a drop in delay till midnight
+
+
+# In[ ]:
+
 
 
 
